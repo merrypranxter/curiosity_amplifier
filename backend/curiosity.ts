@@ -2,7 +2,14 @@ import { ai } from '@appdeploy/sdk';
 
 type Category = 'Obvious Next' | 'Hidden Cousins' | 'Fringe/Spice' | 'Hands-On';
 type RawItem = { category: Category; title: string; why_for_you: string; summary: string; starter_query: string; deep_query: string; hands_on_query: string; hands_on_title: string; hands_on_instructions: string; code_language?: string; code_snippet?: string; hidden_door: string };
-type RecommendInput = { interests?: string[]; serendipity?: boolean; personality?: string; settings?: { obscurity?: number; orthogonality?: number; rigor?: number; actionability?: number; horizon?: string; mode?: string }; depth?: string; previousQueries?: string[][] };
+type RecommendInput = { interests?: string[]; serendipity?: boolean; personality?: string; settings?: { obscurity?: number; orthogonality?: number; rigor?: number; actionability?: number; horizon?: string; mode?: string }; depth?: string; previousQueries?: string[][]; apiKey?: string };
+
+export class RecommendationError extends Error {
+  constructor(message: string, public statusCode: number) {
+    super(message);
+    this.name = 'RecommendationError';
+  }
+}
 
 const expectedCategories: Category[] = ['Obvious Next','Obvious Next','Obvious Next','Hidden Cousins','Hidden Cousins','Hidden Cousins','Hidden Cousins','Hidden Cousins','Fringe/Spice','Fringe/Spice','Fringe/Spice','Hands-On','Hands-On','Hands-On','Hands-On'];
 
@@ -29,6 +36,42 @@ const schema = {
 
 function clean(value: unknown, max = 500) { return String(value || '').trim().slice(0, max); }
 function searchUrl(base: string, query: string) { return base + encodeURIComponent(query); }
+
+async function extractWithOpenAI(prompt: string, apiKey: string, temperature: number) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 90000);
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      signal: controller.signal,
+      headers: { 'Content-Type': 'application/json', Authorization: ['Bearer', apiKey].join(' ') },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: 'Return only JSON matching the supplied schema.' },
+          { role: 'user', content: prompt },
+        ],
+        response_format: { type: 'json_schema', json_schema: { name: 'curiosity_bundle', strict: false, schema } },
+        max_tokens: 8192,
+        temperature,
+      }),
+    });
+    if (response.status === 401) throw new RecommendationError('That OpenAI API key was rejected. Check it and try again.', 401);
+    if (response.status === 429) throw new RecommendationError('OpenAI rate-limited the request or the key has no available quota. Try again shortly or check the key’s billing limits.', 429);
+    if (!response.ok) throw new RecommendationError(`OpenAI could not generate recommendations (error ${response.status}).`, 502);
+    const result = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
+    const content = result.choices?.[0]?.message?.content;
+    if (!content) throw new RecommendationError('OpenAI returned an empty recommendation bundle.', 502);
+    return JSON.parse(content) as { bundle_title?: string; intro?: string; map_note?: string; items?: RawItem[] };
+  } catch (error) {
+    if (error instanceof RecommendationError) throw error;
+    if (error instanceof SyntaxError) throw new RecommendationError('OpenAI returned a response the curiosity engine could not read. Try again.', 502);
+    if (error instanceof Error && error.name === 'AbortError') throw new RecommendationError('OpenAI took too long to respond. Try again.', 504);
+    throw new RecommendationError('The curiosity engine could not reach OpenAI. Try again in a moment.', 502);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 async function fetchJson(url: string) {
   const controller = new AbortController();
@@ -58,6 +101,7 @@ export async function recommend(input: RecommendInput) {
   const serendipity = Boolean(input.serendipity) || interests.length === 0;
   const settings = input.settings || {};
   const history = Array.isArray(input.previousQueries) ? input.previousQueries.slice(0, 8).map((group) => group.join(' + ')) : [];
+  const apiKey = clean(input.apiKey, 500);
   const subject = serendipity ? 'Choose a wild but coherent bundle of 2-3 seed interests yourself. Avoid generic productivity, finance, celebrity, and wellness topics.' : interests.join(' + ');
   const prompt = `Create a curiosity recommendation bundle for: ${subject}.
 Personality: ${clean(input.personality, 80)}. Voice mode: ${clean(settings.mode, 30)}. Depth: ${clean(input.depth, 20)}.
@@ -67,8 +111,10 @@ Return EXACTLY 15 items in this exact order: 3 Obvious Next, 5 Hidden Cousins, 3
 Write punchy titles. why_for_you should explicitly connect the item to the stated interest. summary should be 2-3 useful sentences, not hype. starter_query should be a precise encyclopedic search phrase. deep_query should be a precise academic-paper search phrase. hands_on_query should be a useful GitHub repository search phrase. hands_on_title and instructions should describe a concrete experiment, dataset, simulation, or small build. Include a short runnable Python or JavaScript code_snippet where genuinely relevant; otherwise use an empty string. hidden_door is the next related topic breadcrumb.
 Tone by mode: explorer=adventurous/open; builder=practical/structured; archivist=scholarly/sourced; feral=chaotic brilliance but still accurate. Playful microcopy is welcome, generic fluff is forbidden. The map_note must explain one connection to earlier rabbit holes when history exists, otherwise explain the strongest internal connection in this bundle.`;
 
-  const result = await ai.extract({ prompt, schema, maxRetries: 2, maxTokens: 8192, temperature: settings.mode === 'feral' ? 0.95 : 0.72, thinkingMode: settings.rigor && settings.rigor >= 8 ? 'DEEP' : 'FAST' });
-  const data = result.data as { bundle_title?: string; intro?: string; map_note?: string; items?: RawItem[] };
+  const temperature = settings.mode === 'feral' ? 0.95 : 0.72;
+  const data = apiKey
+    ? await extractWithOpenAI(prompt, apiKey, temperature)
+    : (await ai.extract({ prompt, schema, maxRetries: 2, maxTokens: 8192, temperature, thinkingMode: settings.rigor && settings.rigor >= 8 ? 'DEEP' : 'FAST' })).data as { bundle_title?: string; intro?: string; map_note?: string; items?: RawItem[] };
   if (!Array.isArray(data.items) || data.items.length < 15) throw new Error('The recommendation engine returned an incomplete bundle.');
   const rawItems = data.items.slice(0, 15);
   const enriched = await Promise.all(rawItems.map(async (item, index) => {

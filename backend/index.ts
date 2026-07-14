@@ -1,5 +1,5 @@
 import { router, json, error } from '@appdeploy/sdk';
-import { recommend } from './curiosity';
+import { recommend, RecommendationError } from './curiosity';
 import { realtimeSubscriptionRoutes } from './realtime-subscribers';
 
 export const handler = router({
@@ -12,6 +12,7 @@ export const handler = router({
       return json(await recommend(payload));
     } catch (err) {
       console.error('recommendation_failed', err);
+      if (err instanceof RecommendationError) return error(err.message, err.statusCode);
       const rpcError = err as { statusCode?: number; responseText?: string };
       if (rpcError?.statusCode === 429) return error('The curiosity engine is briefly rate-limited. Try again in a moment.', 429);
       return error('The curiosity engine failed to assemble a complete bundle.', 502);

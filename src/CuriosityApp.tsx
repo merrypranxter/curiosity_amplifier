@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowRight, Atom, BookOpen, Clock3, Code2, Compass, Dices, ExternalLink, FlaskConical, History, LoaderCircle, Map, Radio, RefreshCw, SlidersHorizontal, Sparkles, WandSparkles, X } from 'lucide-react';
+import { ArrowRight, Atom, BookOpen, Clock3, Code2, Compass, Dices, ExternalLink, FlaskConical, History, KeyRound, LoaderCircle, Map, Radio, RefreshCw, SlidersHorizontal, Sparkles, WandSparkles, X } from 'lucide-react';
 
 type Category = 'Obvious Next' | 'Hidden Cousins' | 'Fringe/Spice' | 'Hands-On';
 type OutputMode = 'explorer' | 'builder' | 'archivist' | 'feral';
@@ -74,6 +74,7 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [loadingIndex, setLoadingIndex] = useState(0);
+  const [apiKey, setApiKey] = useState('');
 
   const interests = useMemo(() => parseInterests(interestText), [interestText]);
 
@@ -123,6 +124,7 @@ function App() {
           personality,
           settings,
           depth,
+          apiKey: apiKey.trim() || undefined,
           previousQueries: history.slice(0, 8).map((entry) => entry.interests),
         }),
       });
@@ -147,7 +149,7 @@ function App() {
       window.setTimeout(() => document.getElementById('results')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'The curiosity engine coughed up a hairball.';
-      setErrorMessage(message.includes('required') ? message : 'The tunnel collapsed mid-dig. Try again, or nudge the sliders into less radioactive territory.');
+      setErrorMessage(message);
     } finally {
       setLoading(false);
     }
@@ -214,6 +216,11 @@ function App() {
               <label><span>Time horizon</span><select value={settings.horizon} onChange={(event) => setSettings((current) => ({ ...current, horizon: event.target.value }))}><option>mixed</option><option>prehistoric</option><option>ancient</option><option>19th century</option><option>today</option><option>preprint</option></select></label>
               <label><span>Output depth</span><select value={depth} onChange={(event) => setDepth(event.target.value as Depth)}><option value="surface">surface scan</option><option value="deep">deep dive</option></select></label>
             </div>
+            <label className="api-key-control">
+              <span><KeyRound size={15} /> OpenAI API key <em>optional fallback</em></span>
+              <input type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder="sk-…" autoComplete="off" spellCheck={false} />
+              <small>Used only for this browser session and sent only when you generate.</small>
+            </label>
             <div className="mode-switch"><span>VOICE</span>{(['explorer', 'builder', 'archivist', 'feral'] as OutputMode[]).map((mode) => <button className={settings.mode === mode ? 'active' : ''} key={mode} onClick={() => setSettings((current) => ({ ...current, mode }))}>{mode}</button>)}</div>
           </div>}
         </aside>

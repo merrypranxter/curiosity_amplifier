@@ -13,6 +13,7 @@ The app includes personality presets, manual sliders, surface/deep output modes,
 
 - React + Vite frontend
 - AppDeploy backend using built-in AI
+- Optional bring-your-own OpenAI API key fallback (kept in memory for the current browser session only)
 - Wikipedia API for starter references
 - OpenAlex API for academic deep cuts
 - Browser localStorage for query history

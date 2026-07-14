@@ -1,0 +1,25 @@
+# Tests
+## Test 1 - Generate a curiosity bundle [sanity]
+Viewport: desktop
+Description: Verifies the core curiosity workflow returns all four result groups.
+Steps:
+1. Navigate to the app
+2. Enter "slime molds + urban planning" in the interest field
+3. Click "OPEN THE TRAPDOOR"
+Expected: A result bundle appears with Obvious Next, Hidden Cousins, Fringe/Spice, and Hands-On sections.
+## Test 2 - Empty input guardrail
+Viewport: desktop
+Description: Verifies a normal generation request requires an interest.
+Steps:
+1. Navigate to the app
+2. Leave the interest field empty
+3. Click "OPEN THE TRAPDOOR"
+Expected: A visible error asks for at least one curiosity and no results are generated.
+## Test 3 - Serendipity mode works without input
+Viewport: mobile
+Description: Verifies the app can generate a coherent bundle without user-provided interests.
+Steps:
+1. Navigate to the app
+2. Leave the interest field empty
+3. Tap "SERENDIPITY ME"
+Expected: A result bundle appears and the layout remains usable at mobile width.

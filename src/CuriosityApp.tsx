@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { api } from '@appdeploy/client';
 import { ArrowRight, Atom, BookOpen, Clock3, Code2, Compass, Dices, ExternalLink, FlaskConical, History, LoaderCircle, Map, Radio, RefreshCw, SlidersHorizontal, Sparkles, WandSparkles, X } from 'lucide-react';
 
 type Category = 'Obvious Next' | 'Hidden Cousins' | 'Fringe/Spice' | 'Hands-On';
@@ -115,15 +114,25 @@ function App() {
     setErrorMessage('');
     setBundle(null);
     try {
-      const response = await api.post('/api/recommend', {
-        interests: serendipity ? [] : interests,
-        serendipity,
-        personality,
-        settings,
-        depth,
-        previousQueries: history.slice(0, 8).map((entry) => entry.interests),
+      const response = await fetch('/api/recommend', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          interests: serendipity ? [] : interests,
+          serendipity,
+          personality,
+          settings,
+          depth,
+          previousQueries: history.slice(0, 8).map((entry) => entry.interests),
+        }),
       });
-      const nextBundle = response.data as Bundle;
+      const responseBody = await response.json().catch(() => null) as Bundle | { message?: string } | null;
+      if (!response.ok) {
+        throw new Error(responseBody && 'message' in responseBody && responseBody.message
+          ? responseBody.message
+          : `Recommendation request failed (${response.status})`);
+      }
+      const nextBundle = responseBody as Bundle;
       setBundle(nextBundle);
       const entry: HistoryEntry = {
         id: crypto.randomUUID(),
